@@ -83,15 +83,18 @@ object SubprocessTests extends TestSuite{
         assert(res.out.string.trim == "Hello123")
       }
     }
-    // test("filebased2"){
-    //   if(Unix()){
-    //     val res = proc("which", "echo").call()
-    //     val echoRoot = Path(res.out.string.trim)
-    //     assert(echoRoot == root/"bin"/"echo")
+    test("filebased2"){
+      if(Unix()){
+        val res = proc("which", "echo").call()
+        val echoRoot = Path(res.out.string.trim)
+        println(s"""\u001b[43;1m\u001b[30mDEBUG:\u001b[0m res = ${res}""")
+        println(s"""\u001b[43;1m\u001b[30mDEBUG:\u001b[0m echoRoot = ${echoRoot}""")
+        println(s"""\u001b[43;1m\u001b[30mDEBUG:\u001b[0m root = ${root}""")
+        assert(echoRoot == root/"bin"/"echo")
 
-    //     assert(proc(echoRoot, "HELLO").call().out.lines == Seq("HELLO"))
-    //   }
-    // }
+        assert(proc(echoRoot, "HELLO").call().out.lines == Seq("HELLO"))
+      }
+    }
 
     test("envArgs"){ if(Unix()){
       val res0 = proc("bash", "-c", "echo \"Hello$ENV_ARG\"").call(env = Map("ENV_ARG" -> "12"))
