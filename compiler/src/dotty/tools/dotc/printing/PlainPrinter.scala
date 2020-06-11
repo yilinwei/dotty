@@ -127,6 +127,7 @@ class PlainPrinter(_ctx: Context) extends Printer {
     (defn.ScalaPredefModule.termRef.typeAliasMembers
       ++ defn.ScalaPackageObject.termRef.typeAliasMembers).map(_.info.classSymbol).toSet
 
+
   def toText(tp: Type): Text = controlled {
     homogenize(tp) match {
       case tp: TypeType =>
@@ -138,6 +139,7 @@ class PlainPrinter(_ctx: Context) extends Printer {
       case tp: TermRef if tp.denot.isOverloaded =>
         "<overloaded " ~ toTextRef(tp) ~ ">"
       case tp: TypeRef =>
+
         if (printWithoutPrefix.contains(tp.symbol))
           toText(tp.name)
         else
@@ -148,8 +150,23 @@ class PlainPrinter(_ctx: Context) extends Printer {
         ParamRefNameString(tp) ~ lambdaHash(tp.binder)
       case tp: SingletonType =>
         toTextSingleton(tp)
-      case AppliedType(tycon, args) =>
-        (toTextLocal(tycon) ~ "[" ~ argsText(args) ~ "]").close
+      case tpe @ AppliedType(tycon, args) =>
+        def default = toTextLocal(tycon) ~ "[" ~ argsText(args) ~ "]"
+        tycon match {
+          case tp: TypeRef =>
+            tp
+              .prefix
+              .typeAliasMembers
+              .find { ta =>
+                ta.info match {
+                  case TypeAlias(alias) =>
+                    tpe == alias
+                  case _ => false
+                }
+              }.map(ta => toText(ta) ~ " (" ~ default ~ ") ".close).getOrElse(default.close)
+          case _ =>
+            default.close
+        }
       case tp: RefinedType =>
         val parent :: (refined: List[RefinedType @unchecked]) =
           refinementChain(tp).reverse
@@ -584,4 +601,3 @@ class PlainPrinter(_ctx: Context) extends Printer {
   protected def coloredText(text: Text, color: String): Text =
     if (ctx.useColors) color ~ text ~ SyntaxHighlighting.NoColor else text
 }
-
