@@ -160,8 +160,26 @@ class PlainPrinter(_ctx: Context) extends Printer {
               .find { ta =>
                 ta.info match {
                   case TypeAlias(alias) =>
-                    tpe == alias
-                  case _ => false
+                    if(tpe == alias)
+                      true
+                    else
+                      alias match {
+                        case lambda: HKTypeLambda =>
+                          lambda.resultType match {
+                            case AppliedType(atycon, aargs) if tycon == atycon =>
+                              aargs.zip(args).map {
+                                case (TypeParamRef(_, _), _) => true // Check bounds
+                                case (a, b) => a == b
+                              }.foldLeft(true)(_ && _)
+                            case _ =>
+                              false
+                          }
+                        case _ =>
+                          // Not sure of any other equality
+                          false
+                      }
+                  case _ =>
+                    false
                 }
               }.map(ta => toText(ta) ~ " (" ~ default ~ ") ".close).getOrElse(default.close)
           case _ =>
