@@ -127,6 +127,44 @@ class PlainPrinter(_ctx: Context) extends Printer {
     (defn.ScalaPredefModule.termRef.typeAliasMembers
       ++ defn.ScalaPackageObject.termRef.typeAliasMembers).map(_.info.classSymbol).toSet
 
+  private def toTextAliased(tp: Type): Text = {
+    tp match {
+      case AppliedType(tycon, args) =>
+        def default = toTextLocal(tycon) ~ "[" ~ argsText(args) ~ "]"
+        tycon match {
+          case tr: TypeRef =>
+            val compatible = tr
+              .prefix
+              .typeAliasMembers
+              .map { ta =>
+                ta.info match {
+                  case TypeAlias(alias: HKTypeLambda) =>
+                    //TODO: bounds?
+                    alias.resultType match {
+                      case AppliedType(atycon, aargs) if tycon =:= tycon =>
+                        val subst = aargs.collect {
+                          case tpr: TypeParamRef =>
+                            args(tpr.paramNum)
+                        }
+                        if(alias.instantiate(subst) =:= tp)
+                          Some(args.size -> (toTextLocal(ta) ~ "[" ~ argsText(subst) ~ "]").close)
+                        else None
+                    }
+                  case TypeAlias(alias) if alias =:= tp =>
+                    Some(0 -> toText(ta))
+                  case _ => None
+                }
+              }
+              .collect {
+                case Some(entry) => entry
+              }
+              .sortBy(_._1)
+              .map(_._2)
+            compatible.headOption.getOrElse(default.close)
+          case _ => default.close
+        }
+    }
+  }
 
   def toText(tp: Type): Text = controlled {
     homogenize(tp) match {
@@ -150,41 +188,8 @@ class PlainPrinter(_ctx: Context) extends Printer {
         ParamRefNameString(tp) ~ lambdaHash(tp.binder)
       case tp: SingletonType =>
         toTextSingleton(tp)
-      case tpe @ AppliedType(tycon, args) =>
-        def default = toTextLocal(tycon) ~ "[" ~ argsText(args) ~ "]"
-        tycon match {
-          case tp: TypeRef =>
-            tp
-              .prefix
-              .typeAliasMembers
-              .find { ta =>
-                ta.info match {
-                  case TypeAlias(alias) =>
-                    if(tpe == alias)
-                      true
-                    else
-                      alias match {
-                        case lambda: HKTypeLambda =>
-                          lambda.resultType match {
-                            case AppliedType(atycon, aargs) if tycon == atycon =>
-                              aargs.zip(args).map {
-                                case (TypeParamRef(_, _), _) => true // Check bounds
-                                case (a, b) => a == b
-                              }.foldLeft(true)(_ && _)
-                            case _ =>
-                              false
-                          }
-                        case _ =>
-                          // Not sure of any other equality
-                          false
-                      }
-                  case _ =>
-                    false
-                }
-              }.map(ta => toText(ta) ~ " (" ~ default ~ ") ".close).getOrElse(default.close)
-          case _ =>
-            default.close
-        }
+      case tpe: AppliedType =>
+        toTextAliased(tpe)
       case tp: RefinedType =>
         val parent :: (refined: List[RefinedType @unchecked]) =
           refinementChain(tp).reverse
@@ -242,7 +247,7 @@ class PlainPrinter(_ctx: Context) extends Printer {
         }
       case AnnotatedType(tpe, annot) =>
         toTextLocal(tpe) ~ " " ~ toText(annot)
-      case tp: TypeVar =>
+     case tp: TypeVar =>
         if (tp.isInstantiated)
           toTextLocal(tp.instanceOpt) ~ (Str("^") provided printDebug)
         else {
