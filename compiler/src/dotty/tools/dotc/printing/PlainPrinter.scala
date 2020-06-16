@@ -127,6 +127,13 @@ class PlainPrinter(_ctx: Context) extends Printer {
     (defn.ScalaPredefModule.termRef.typeAliasMembers
       ++ defn.ScalaPackageObject.termRef.typeAliasMembers).map(_.info.classSymbol).toSet
 
+  private def canAliasArguments(args: List[Type], aargs: List[Type]): Boolean = {
+    args.zip(aargs).map {
+      case (_: TypeParamRef, _) => true
+      case (x, y) => x =:= y
+    }.foldLeft(true)(_ && _)
+  }
+
   private def toTextAliased(tp: Type): Text = {
     tp match {
       case AppliedType(tycon, args) =>
@@ -141,14 +148,15 @@ class PlainPrinter(_ctx: Context) extends Printer {
                   case TypeAlias(alias: HKTypeLambda) =>
                     //TODO: bounds?
                     alias.resultType match {
-                      case AppliedType(atycon, aargs) if tycon =:= tycon =>
-                        val subst = aargs.collect {
-                          case tpr: TypeParamRef =>
-                            args(tpr.paramNum)
+                      case AppliedType(atycon, aargs) if atycon =:= tycon && canAliasArguments(aargs, args) =>
+                        val subst = aargs.zip(args).collect {
+                          case (tpr: TypeParamRef, atpe) =>
+                            atpe
                         }
                         if(alias.instantiate(subst) =:= tp)
                           Some(args.size -> (toTextLocal(ta) ~ "[" ~ argsText(subst) ~ "]").close)
                         else None
+                      case _ => None
                     }
                   case TypeAlias(alias) if alias =:= tp =>
                     Some(0 -> toText(ta))
