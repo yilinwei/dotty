@@ -19,4 +19,4 @@ type MOptional[S, A] = Optic[[F[_, _]] =>> Cartesian[F] & Cocartesian[F], S, S, 
 val lens: MLens[String, String] = ???
 val prism: MPrism[String, Int] = ???
 
-val what: MOptional[String, Int] = prism <<< lens
+val what: MPrism[String, Int] = prism <<< lens
