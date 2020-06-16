@@ -146,16 +146,20 @@ class PlainPrinter(_ctx: Context) extends Printer {
               .map { ta =>
                 ta.info match {
                   case TypeAlias(alias: HKTypeLambda) =>
-                    //TODO: bounds?
+                    //TODO: recurse the result type, if concrete type alias
                     alias.resultType match {
                       case AppliedType(atycon, aargs) if atycon =:= tycon && canAliasArguments(aargs, args) =>
-                        val subst = aargs.zip(args).collect {
-                          case (tpr: TypeParamRef, atpe) =>
-                            atpe
-                        }
-                        if(alias.instantiate(subst) =:= tp)
-                          Some(args.size -> (toTextLocal(ta) ~ "[" ~ argsText(subst) ~ "]").close)
-                        else None
+                        val subst = aargs
+                          .zip(args)
+                          .collect {
+                            case (tpr: TypeParamRef, atpe) =>
+                              tpr.paramNum -> atpe
+                          }
+                          .sortBy(_._1)
+                          .groupBy(_._1)
+                          .map(_._2.head._2)
+                          .toList
+                        Some(subst.size -> (toTextLocal(ta) ~ s"[" ~ argsText(subst) ~ "]").close)
                       case _ => None
                     }
                   case TypeAlias(alias) if alias =:= tp =>
