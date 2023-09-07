@@ -1887,7 +1887,10 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           val sym = b.symbol
           assert(sym.name != tpnme.WILDCARD)
           if ctx.scope.lookup(b.name) == NoSymbol then ctx.enter(sym)
-          else report.error(new DuplicateBind(b, cdef), b.srcPos)
+          else {
+              // TODO: We only want to allow duplicate binds on alternative contexts.
+              // report.error(new DuplicateBind(b, cdef), b.srcPos)
+          }
           if (!ctx.isAfterTyper) {
             val bounds = ctx.gadt.fullBounds(sym)
             if (bounds != null) sym.info = bounds
@@ -1909,6 +1912,79 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
       caseTp.appliedTo(bindingsTps)
     case pt => pt
   }
+  // private def indexPattern(cdef: untpd.CaseDef)(using Context) = new TreeMap {
+  //   val stripTypeVars = new TypeMap {
+  //     def apply(t: Type) = mapOver(t)
+  //   }
+  //   override def transform(trt: Tree)(using Context) =
+  //     super.transform(trt.withType(stripTypeVars(trt.tpe))) match {
+  //       case b: Bind =>
+  //         val sym = b.symbol
+  //         assert(sym.name != tpnme.WILDCARD)
+  //         if ctx.scope.lookup(b.name) == NoSymbol then ctx.enter(sym)
+  //         else {
+  //             // TODO: We only want to allow duplicate binds on alternative contexts.
+  //             // report.error(new DuplicateBind(b, cdef), b.srcPos)
+  //         }
+  //         if (!ctx.isAfterTyper) {
+  //           val bounds = ctx.gadt.fullBounds(sym)
+  //           if (bounds != null) sym.info = bounds
+  //         }
+  //         b
+  //       case t: UnApply if t.symbol.is(Inline) => Inlines.inlinedUnapply(t)
+  //       case t => t
+  //     }
+  // }
+
+  private def indexPattern2(cdef: untpd.CaseDef)(using Context): TreeMap = new TreeMap {
+
+    val stripTypeVars = new TypeMap {
+      def apply(t: Type) = mapOver(t)
+    }
+
+    override def transform(trt: Tree)(using Context) = {
+      trt.withType(stripTypeVars(trt.tpe)) match {
+        case b: Bind =>
+          val sym = b.symbol
+          assert(sym.name != tpnme.WILDCARD)
+          if ctx.scope.lookup(b.name) == NoSymbol then ctx.enter(sym) else report.error(new DuplicateBind(b, cdef), b.srcPos)
+          b
+        case trt @ Alternative(alt :: alts) =>
+          // For an or pattern we need to do several things.
+          // 1st, we need to get the lub of the types
+          val origCtx = ctx
+          val altCtx = origCtx.fresh.setScope(origCtx.scope.cloneScope)
+          val altTree = super.transform(alt)(using altCtx)
+          val syms = altCtx.scope.toList
+          val tpes = syms.map(sym => sym.name -> sym.info).toMap
+          val names = tpes.keys.toSet
+          val (updatedTpes, reversedTrts) = alts.foldLeft((tpes, List[Tree]())) { (b, alt) =>
+            val (tpe, trts) = b
+            val altCtx1 = origCtx.fresh.setScope(origCtx.scope.cloneScope)
+            val altTree = super.transform(alt)(using altCtx1)
+            val altTpes = altCtx1.scope.toList.map(sym => sym.name -> sym.info).toMap
+            val altNames = altTpes.keys.toSet
+            if (names.diff(altNames.toSet).isEmpty) {
+              val updatedTpes = tpes.map {
+                case (name, tpe) =>
+                  name -> TypeComparer.lub(altTpes(name), tpe)
+              }.toMap
+              (updatedTpes, altTree :: trts)
+            } else {
+              // TODO: Better message
+              report.error("Differing symbols", alt.srcPos)
+              (tpes, alt :: trts)
+            }
+          }
+          for (name <- names) {
+            val sym = altCtx.scope.lookup(name)
+            origCtx.enter(sym.copy(info = updatedTpes(sym.name)))
+          }
+          cpy.Alternative(trt)(altTree :: reversedTrts.reverse)
+        case t => super.transform(t)
+      }
+    }
+  }
 
   /** Type a case. */
   def typedCase(tree: untpd.CaseDef, sel: Tree, wideSelType: Type, pt: Type)(using Context): CaseDef = {
@@ -1920,7 +1996,11 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
         case defn.MatchCase(_, bodyPt) => bodyPt
         case pt => pt
       }
-      val pat1 = indexPattern(tree).transform(pat)
+
+      // TODO: Why does this need to exist here?
+      val pat1 = indexPattern2(tree).transform(pat)
+      // val pat1 = indexPattern(tree).transform(pat)
+
       val guard1 = typedExpr(tree.guard, defn.BooleanType)
       var body1 = ensureNoLocalRefs(typedExpr(tree.body, pt1), pt1, ctx.scope.toList)
       if ctx.gadt.isNarrowing then
@@ -1936,6 +2016,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     }
 
     val pat1 = typedPattern(tree.pat, wideSelType)(using gadtCtx)
+
     caseRest(pat1)(
       using Nullables.caseContext(sel, pat1)(
         using gadtCtx))
@@ -2393,8 +2474,9 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
             else pt & body1.tpe
           val sym = newPatternBoundSymbol(name, symTp, tree.span)
           if (pt == defn.ImplicitScrutineeTypeRef || tree.mods.is(Given)) sym.setFlag(Given)
-          if (ctx.mode.is(Mode.InPatternAlternative))
-            report.error(IllegalVariableInPatternAlternative(sym.name), tree.srcPos)
+          // TODO: This works already, the typechecker seems quite happy to propagate this through
+          // if (ctx.mode.is(Mode.InPatternAlternative))
+          //  report.error(IllegalVariableInPatternAlternative(sym.name), tree.srcPos)
           assignType(cpy.Bind(tree)(name, body1), sym)
         }
     }
@@ -2409,6 +2491,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
         tree.withType(defn.AnyType)
     val trees1 = tree.trees.mapconserve(typed(_, pt)(using nestedCtx))
       .mapconserve(ensureValueTypeOrWildcard)
+    println("we are currently here")
     assignType(cpy.Alternative(tree)(trees1), trees1)
   }
 

@@ -22,6 +22,8 @@ import util.Property._
 import scala.annotation.tailrec
 import scala.collection.mutable
 
+// TODO: Alternative plan, Pattern plan
+
 /** The pattern matching transform.
  *  After this phase, the only Match nodes remaining in the code are simple switches
  *  where every pattern is an integer or string constant
@@ -432,6 +434,7 @@ object PatternMatcher {
             patternPlan(scrutinee, body, LetPlan(bound, onSuccess))
           }
         case Alternative(alts) =>
+          alts.foreach(alt => println(alt.show))
           altsLabeledAbstract { onf =>
             SeqPlan(
               altsLabeledAbstract { ons =>
