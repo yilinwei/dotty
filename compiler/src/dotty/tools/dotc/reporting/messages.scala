@@ -261,7 +261,7 @@ extends NotFoundMsg(MissingIdentID) {
   def explain(using Context) = {
     i"""|The identifier for `$name` is not bound within the ${hl("case")} pattern. In:
         |
-        | ${hl("case")} $pat => ...
+        | ${hl("case")} ${withMode(Mode.Pattern)(pat.show)} => ...
         |
         |`${name}` is not defined in the first branch, did you mean ${knownNames.map(k => s"`$k`").mkString(",")}?"""
   }

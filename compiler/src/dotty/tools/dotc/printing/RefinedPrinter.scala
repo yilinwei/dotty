@@ -425,6 +425,7 @@ class RefinedPrinter(_ctx: Context) extends PlainPrinter(_ctx) {
           case _ =>
             Str(id.explanation)
         }
+      case id @ Ident(name) if ctx.mode.is(Mode.Pattern) => toText(name)
       case id @ Ident(name) =>
         val txt = tree.typeOpt match {
           case tp: NamedType if name != nme.WILDCARD =>
