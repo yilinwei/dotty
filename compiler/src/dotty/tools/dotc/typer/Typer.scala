@@ -1879,6 +1879,44 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
       case1
     }
 
+  /** This is used to index alternative patterns like `indexPattern`.
+    *
+    * Specifically, it:
+    *  - Checks each branch has the same set of bind variables
+    *  - Widens the type for each bind
+    *  - Associate the `Ident` with the `Symbol` for the `patternMatcher` later
+    */
+  private def indexAltPattern(cdef: untpd.CaseDef) = new TreeAccumulator[Set[Symbol]] {
+
+    override def foldOver(syms: Set[Symbol], tree: Tree)(using Context): Set[Symbol] =
+      tree match {
+        case UnApply(_, _, patterns) => this(syms, patterns)
+        case tree => super.foldOver(syms, tree)
+      }
+
+    override def apply(syms: Set[Symbol], tree: Tree)(using Context): Set[Symbol] =
+      tree match {
+        case Alternative(alts) =>
+          for (alt <- alts) {
+            val missingSyms = apply(syms, alt)
+            if (!missingSyms.isEmpty) report.error("Alternative missing binding", alt.srcPos)
+          }
+          Set()
+        case Ident(name) if name.isVarPattern && name != nme.WILDCARD =>
+          // TODO: Deal with duplicates
+          val sym = ctx.scope.lookup(name)
+          if (syms.contains(sym)) {
+            sym.info = TypeComparer.lub(sym.info, tree.tpe)
+            tree.pushAttachment(SymOfTree, sym)
+            syms - sym
+          } else {
+            report.error(new MissingAlternativeIdent(cdef.pat, name, ctx.scope.toList.map(_.name)), tree.srcPos)
+            syms
+          }
+        case tree => foldOver(syms, tree)
+      }
+  }
+
   /** - strip all instantiated TypeVars from pattern types.
     *    run/reducable.scala is a test case that shows stripping typevars is necessary.
     *  - enter all symbols introduced by a Bind in current scope
@@ -1887,24 +1925,29 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     val stripTypeVars = new TypeMap {
       def apply(t: Type) = mapOver(t)
     }
-    override def transform(trt: Tree)(using Context) =
+    override def transform(trt: Tree)(using Context) = {
       super.transform(trt.withType(stripTypeVars(trt.tpe))) match {
         case b: Bind =>
           val sym = b.symbol
           assert(sym.name != tpnme.WILDCARD)
           if ctx.scope.lookup(b.name) == NoSymbol then ctx.enter(sym)
-          else {
-              // TODO: We only want to allow duplicate binds on alternative contexts.
-              // report.error(new DuplicateBind(b, cdef), b.srcPos)
-          }
+          else report.error(new DuplicateBind(b, cdef), b.srcPos)
           if (!ctx.isAfterTyper) {
             val bounds = ctx.gadt.fullBounds(sym)
             if (bounds != null) sym.info = bounds
           }
           b
+        case tree @ Alternative(_ :: alts) =>
+          val syms = ctx.scope.toList.toSet
+          for (alt <- alts) {
+            val missingSyms = indexAltPattern(cdef)(syms, alt)
+            if (!missingSyms.isEmpty) report.error(s"missing symbols ${missingSyms}", alt.srcPos)
+          }
+          tree
         case t: UnApply if t.symbol.is(Inline) => Inlines.inlinedUnapply(t)
         case t => t
       }
+    }
   }
 
   /** If the prototype `pt` is the type lambda (when doing a dependent
@@ -1922,6 +1965,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
   /** Type a case. */
   def typedCase(tree: untpd.CaseDef, sel: Tree, wideSelType: Type, pt: Type)(using Context): CaseDef = {
     val originalCtx = ctx
+    // TODO: 
     val gadtCtx: Context = ctx.fresh.setFreshGADTBounds.setNewScope
 
     def caseRest(pat: Tree)(using Context) = {
@@ -1930,7 +1974,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
         case pt => pt
       }
 
-      // TODO: Why does this need to exist here?
+      // We index the pattern afterwards; 
       val pat1 = indexPattern(tree).transform(pat)
 
       val guard1 = typedExpr(tree.guard, defn.BooleanType)

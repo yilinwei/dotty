@@ -254,6 +254,18 @@ extends NotFoundMsg(MissingIdentID) {
   }
 }
 
+class MissingAlternativeIdent(pat: untpd.Tree, val name: Name, knownNames: Seq[Name])(using Context)
+extends NotFoundMsg(MissingIdentID) {
+  def msg(using Context) = i"Not found: $name"
+
+  def explain(using Context) = {
+    i"""|The identifier for `$name` is not bound within the ${hl("case")} pattern. In:
+        |
+        | ${hl("case")} $pat => ...
+        |
+        |`${name}` is not defined in the first branch, did you mean ${knownNames.map(k => s"`$k`").mkString(",")}?"""
+  }
+}
 class TypeMismatch(found: Type, expected: Type, inTree: Option[untpd.Tree], addenda: => String*)(using Context)
   extends TypeMismatchMsg(found, expected)(TypeMismatchID):
 
