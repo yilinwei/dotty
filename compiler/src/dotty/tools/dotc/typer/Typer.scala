@@ -1891,6 +1891,7 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
     override def foldOver(syms: Set[Symbol], tree: Tree)(using Context): Set[Symbol] =
       tree match {
         case UnApply(_, _, patterns) => this(syms, patterns)
+        case Block(_, expr) => this(syms, expr)
         case tree => super.foldOver(syms, tree)
       }
 
@@ -2450,10 +2451,15 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
             else pt & body1.tpe
           val sym = newPatternBoundSymbol(name, symTp, tree.span)
           if (pt == defn.ImplicitScrutineeTypeRef || tree.mods.is(Given)) sym.setFlag(Given)
-          // TODO: Maybe assert we don't have this mode?
-          // if (ctx.mode.is(Mode.InPatternAlternative))
-          //  report.error(IllegalVariableInPatternAlternative(sym.name), tree.srcPos)
-          assignType(cpy.Bind(tree)(name, body1), sym)
+
+          if (ctx.mode.is(Mode.InPatternAlternative)) {
+            val ident = assignType(cpy.Ident(tree)(name), pt)
+            val stats = List(assignType(untpd.Assign(ident, body1)))
+            val block = untpd.Block(stats, ident)
+            assignType(block, stats, ident)
+          } else {
+            assignType(cpy.Bind(tree)(name, body1), sym)
+          }
         }
     }
   }
