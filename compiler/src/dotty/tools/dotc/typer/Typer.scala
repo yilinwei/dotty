@@ -1908,7 +1908,8 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           val sym = ctx.scope.lookup(name)
           if (syms.contains(sym)) {
             sym.info = TypeComparer.lub(sym.info, tree.tpe)
-            tree.pushAttachment(SymOfTree, sym)
+            // Can we cache the lookup on the tree for the patternMatcherPhase?
+            // tree.pushAttachment(SymOfTree, sym)
             syms - sym
           } else {
             report.error(new MissingAlternativeIdent(cdef.pat, name, ctx.scope.toList.map(_.name)), tree.srcPos)
