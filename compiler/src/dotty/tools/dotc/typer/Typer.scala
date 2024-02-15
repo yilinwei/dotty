@@ -1938,8 +1938,16 @@ class Typer(@constructorOnly nestingLevel: Int = 0) extends Namer
           }
           b
         case t: UnApply if t.symbol.is(Inline) =>
+          // TODO: Where is this triggered?
           assert(!t.symbol.is(Transparent))
           cpy.UnApply(t)(fun = Inlines.inlinedUnapplyFun(t.fun)) // TODO inline these in the inlining phase (see #19382)
+        case t: UnApply =>
+          // println("---begin---")
+          // println(t.show)
+          // println(t.symbol)
+          // println(t.symbol.is(Inline))
+          // println("---end---")
+          t
         case t => t
       }
   }

@@ -7,6 +7,8 @@ import scala.reflect.ClassTag
 // TODO: Rename to JavaRecordReflectMirror
 object JavaRecordMirror:
 
+  inline def identity[T](t: T): T = t
+
   def apply[T <: Record](clazz: Class[T]): JavaRecordMirror[T] =
     val components = clazz.getRecordComponents.nn
     val constructorTypes = components.map(_.nn.getType.nn)

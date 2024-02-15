@@ -282,6 +282,7 @@ trait ParallelTesting extends RunnerOrchestration { self =>
     /** Entry point: runs the test */
     final def encapsulatedCompilation(testSource: TestSource) = new LoggedRunnable { self =>
       def checkTestSource(): Unit = tryCompile(testSource) {
+        println("we're here")
         val reportersOrCrash = compileTestSource(testSource)
         onComplete(testSource, reportersOrCrash, self)
         registerCompletion()
@@ -511,15 +512,24 @@ trait ParallelTesting extends RunnerOrchestration { self =>
           finally Thread.currentThread.interrupt()
 
       def compileWithJavac(fs: Array[String]) = if (fs.nonEmpty) {
+        val javacBin = Paths.get(sys.props("java.home"), "bin", "javac").toString
+
         val fullArgs = Array(
-          "javac",
+          javacBin,
           "-encoding", StandardCharsets.UTF_8.name,
         ) ++ flags.javacFlags ++ fs
 
-        val process = Runtime.getRuntime.exec(fullArgs)
-        val output = Source.fromInputStream(process.getErrorStream).mkString
+        val process = new ProcessBuilder(fullArgs*).start()
 
-        if waitForJudiciously(process) != 0 then Some(output)
+          // Runtime.getRuntime.exec(fullArgs)
+        // val output = Source.fromInputStream(process.getErrorStream).mkString
+
+        println(s"${process.isAlive}")
+        // What a joke! This should also interrupt.
+        Thread.sleep(2000)
+        // process.waitFor()
+
+        if process.exitValue() != 0 then Some("now?")
         else None
       } else None
 
@@ -549,22 +559,23 @@ trait ParallelTesting extends RunnerOrchestration { self =>
         // If a test contains a Java file that cannot be parsed by Dotty's Java source parser, its
         // name must contain the string "JAVA_ONLY".
         val (dottyFiles, allArgs) = flags.compilationMode match
+          case _ => (files.map(_.getPath), flags.all)
           // case CompilationMode.Mixed => files.filterNot(_.getName.contains("JAVA_ONLY")).map(_.getPath)
-          case _ =>
-            val (javaFiles, dottyFiles) = files.partition(_.getName.endsWith(".java"))
-            val javaErrors = compileWithJavac(javaFiles.map(_.getPath))
-            if (javaErrors.isDefined) {
-              echo(s"\njava compilation failed: \n${ javaErrors.get }")
-              fail(failure = JavaCompilationFailure(javaErrors.get))
-            }
-            // val classFiles = javaFiles.map { file =>
-            //   val name = file.getName
-            //   val className = name.substring(0, name.length - ".java".length) + ".class"
-            //   file.toPath.resolveSibling(className)
-            // }
-            // TODO: More robust?
-            val classPath = javaFiles.head.toPath.getParent.toString
-            (dottyFiles.map(_.getPath), flags.withClasspath(classPath).all)
+          // case _ =>
+          //   val (javaFiles, dottyFiles) = files.partition(_.getName.endsWith(".java"))
+          //   val javaErrors = compileWithJavac(javaFiles.map(_.getPath))
+          //   if (javaErrors.isDefined) {
+          //     echo(s"\njava compilation failed: \n${ javaErrors.get }")
+          //     fail(failure = JavaCompilationFailure(javaErrors.get))
+          //   }
+          //   // val classFiles = javaFiles.map { file =>
+          //   //   val name = file.getName
+          //   //   val className = name.substring(0, name.length - ".java".length) + ".class"
+          //   //   file.toPath.resolveSibling(className)
+          //   // }
+          //   // TODO: More robust?
+          //   val classPath = javaFiles.head.toPath.getParent.toString
+          //   (dottyFiles.map(_.getPath), flags.withClasspath(classPath).all)
 
         driver.process(allArgs ++ dottyFiles, reporter = reporter)
 
@@ -667,6 +678,7 @@ trait ParallelTesting extends RunnerOrchestration { self =>
           .and("-d", targetDir.getPath)
           .and("-pagewidth", pageWidth.toString)
           .all
+        println(s"Target dir is ${targetDir.getPath}")
         val scalacCommand = Array("java", "-cp", scalacClasspath, "dotty.tools.dotc.Main")
         scalacCommand ++ flagsArgs ++ fileArgs
       }

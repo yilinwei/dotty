@@ -118,6 +118,7 @@ object Implicits:
     /** Return those references in `refs` that are compatible with type `pt`. */
     protected def filterMatching(pt: Type)(using Context): List[Candidate] = {
       record("filterMatching")
+      println(s"I am filtering for ${pt.show}")
 
       val considerExtension = pt match
         case ViewProto(_, _: SelectionProto) => true
@@ -238,6 +239,8 @@ object Implicits:
             else ref
           val refNorm = normalize(refAdjusted, pt)
           Stats.record("eligible check matches")
+          println(s"${ptNorm.show} and ${refNorm.show} for ${ref.symbol}")
+
           if (!NoViewsAllowed.isCompatible(refNorm, ptNorm))
             ckind = Candidate.None
         }
@@ -361,6 +364,7 @@ object Implicits:
 
     /** The implicit references that are eligible for type `tp`. */
     def eligible(tp: Type): List[Candidate] =
+      println(s"calculating for ${tp.show}")
       if (tp.hash == NotCached)
         Stats.record(i"compute eligible not cached ${tp.getClass}")
         Stats.record("compute eligible not cached")
@@ -383,6 +387,10 @@ object Implicits:
     private def computeEligible(tp: Type): List[Candidate] = /*>|>*/ trace(i"computeEligible $tp in $refs%, %", implicitsDetailed) /*<|<*/ {
       if (monitored) record(s"check eligible refs in irefCtx", refs.length)
       val ownEligible = filterMatching(tp)
+      // println("----own-----")
+      // ownEligible.foreach()
+      // println("----own end-----")
+
       if isOutermost then ownEligible
       else combineEligibles(ownEligible, outerImplicits.nn.eligible(tp))
     }
@@ -1289,6 +1297,11 @@ trait Implicits:
     /** Search a list of eligible implicit references */
     private def searchImplicit(eligible: List[Candidate], contextual: Boolean): SearchResult =
 
+
+      println("---candidates-----")
+      eligible.map(_.show).foreach(println)
+      println("---candidates end-----")
+   
       /** Compare `alt1` with `alt2` to determine which one should be chosen.
        *
        *  @return  a number > 0   if `alt1` is preferred over `alt2`
@@ -1363,6 +1376,7 @@ trait Implicits:
       def rank(pending: List[Candidate], found: SearchResult, rfailures: List[SearchFailure]): SearchResult =
         pending match {
           case cand :: remaining =>
+            println(s"ranking ${cand.show}")
             /** To recover from an ambiguous implicit failure, we need to find a pending
              *  candidate that is strictly better than the failed candidate(s).
              *  If no such candidate is found, we propagate the ambiguity.
@@ -1373,21 +1387,25 @@ trait Implicits:
 
             negateIfNot(tryImplicit(cand, contextual)) match {
               case fail: SearchFailure =>
+                println("failed")
                 if fail eq ImplicitSearchTooLargeFailure then
                   fail
                 else if (fail.isAmbiguous)
+                  println("ambig")
                   if migrateTo3 then
                     val result = rank(remaining, found, NoMatchingImplicitsFailure :: rfailures)
                     if (result.isSuccess)
                       warnAmbiguousNegation(fail.reason.asInstanceOf[AmbiguousImplicits])
                     result
                   else
+                    println("nsted ambig")
                     // The ambiguity happened in a nested search: to recover we
                     // need a candidate better than `cand`
                     healAmbiguous(fail, newCand =>
                       compareAlternatives(newCand, cand) > 0)
                 else rank(remaining, found, fail :: rfailures)
               case best: SearchSuccess =>
+                println(s"searced ${best.show}")
                 if (ctx.mode.is(Mode.ImplicitExploration) || isCoherent)
                   best
                 else disambiguate(found, best) match {
@@ -1541,7 +1559,9 @@ trait Implicits:
             validateOrdering(ord)
             throw ex
 
-      rank(sort(eligible), NoMatchingImplicitsFailure, Nil)
+      val res = rank(sort(eligible), NoMatchingImplicitsFailure, Nil)
+      println(s"res is ${res.show}")
+      res
     end searchImplicit
 
     def isUnderSpecifiedArgument(tp: Type): Boolean =

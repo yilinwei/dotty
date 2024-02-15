@@ -976,6 +976,7 @@ class Definitions {
 
   @tu lazy val JavaRecordReflectMirrorTypeRef: TypeRef = requiredClassRef("scala.runtime.JavaRecordMirror")
   @tu lazy val JavaRecordReflectMirrorModule: Symbol = requiredModule("scala.runtime.JavaRecordMirror")
+    @tu lazy val JavaRecordReflectMirrorModule_identity: Symbol = JavaRecordReflectMirrorModule.requiredMethod(nme.identity)
 
   @tu lazy val TupledFunctionTypeRef: TypeRef = requiredClassRef("scala.util.TupledFunction")
   def TupledFunctionClass(using Context): ClassSymbol = TupledFunctionTypeRef.symbol.asClass

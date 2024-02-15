@@ -307,6 +307,7 @@ class PostTyper extends MacroTransform with InfoTransformer { thisPhase =>
             checkNoConstructorProxy(tree)
             transformSelect(tree, Nil)
         case tree: Apply =>
+          // println(tree.show)
           val methType = tree.fun.tpe.widen.asInstanceOf[MethodType]
           val app =
             if (methType.hasErasedParams)

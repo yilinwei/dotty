@@ -958,6 +958,11 @@ trait Applications extends Compatibility {
    */
   def typedApply(tree: untpd.Apply, pt: Type)(using Context): Tree = {
 
+    // TODO: wtf?
+    println("------starting-----")
+    println(tree.show)
+    println("------ending-----")
+
     def realApply(using Context): Tree = {
       val resultProto = tree.fun match
         case Select(New(tpt), _) if pt.isInstanceOf[ValueType] =>
@@ -1032,7 +1037,8 @@ trait Applications extends Compatibility {
         case err: ErrorType => cpy.Apply(tree)(fun1, proto.typedArgs()).withType(err)
         case TryDynamicCallType =>
           val isInsertedApply = fun1 match {
-            case Select(_, nme.apply) => fun1.span.isSynthetic
+            case Select(_, nme.apply) =>
+              fun1.span.isSynthetic
             case TypeApply(sel @ Select(_, nme.apply), _) => sel.span.isSynthetic
             /* TODO Get rid of this case. It is still syntax-based, therefore unreliable.
              * It is necessary for things like `someDynamic[T](...)`, because in that case,
@@ -1455,8 +1461,9 @@ trait Applications extends Compatibility {
             val (fn1, app) = rec(fn)
             (fn1, tpd.cpy.Apply(unapp)(app, args))
 
-      if unapplyAppCall.symbol.isAllOf(Transparent | Inline) then rec(unapplyAppCall)
+      val ret = if unapplyAppCall.symbol.isAllOf(Inline | Transparent) then rec(unapplyAppCall)
       else (unapplyFn, unapplyAppCall)
+      ret
     end inlinedUnapplyFnAndApp
 
     def unapplyImplicits(dummyArg: Tree, unapp: Tree): List[Tree] =
@@ -1515,6 +1522,11 @@ trait Applications extends Compatibility {
           val unapplyAppCall = withMode(Mode.NoInline):
             typedExpr(untpd.TypedSplice(Apply(unapplyFn, dummyArg :: Nil)))
           inlinedUnapplyFnAndApp(dummyArg, unapplyAppCall)
+
+        // println("----VVV---")
+        // println(newUnapplyFn.show)
+        // println(unapplyApp.show)
+        // println("----VVV---")
 
         var argTypes = unapplyArgs(unapplyApp.tpe, unapplyFn, args, tree.srcPos)
         for (argType <- argTypes) assert(!isBounds(argType), unapplyApp.tpe.show)

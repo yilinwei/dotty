@@ -55,8 +55,10 @@ class Inlining extends MacroTransform, IdentityDenotTransformer {
     }
 
   def newTransformer(using Context): Transformer = new Transformer {
-    override def transform(tree: tpd.Tree)(using Context): tpd.Tree =
+    override def transform(tree: tpd.Tree)(using Context): tpd.Tree = {
+      println(tree.show)
       new InliningTreeMap().transform(tree)
+    }
   }
 
   private class InliningTreeMap extends TreeMapWithImplicits {

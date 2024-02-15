@@ -83,7 +83,7 @@ object NamerOps:
   val ApplyProxyFlags = Synthetic | ConstructorProxy | Inline | Method
 
   /** TODO: It would be nice if this was inline. Probably want an extra flag for `Proxy`? */
-  val UnApplyProxyFlags = Synthetic | Method
+  val UnApplyProxyFlags = Synthetic | Method | Inline | ConstructorProxy
 
   /** If this is a reference to a class and the reference has a stable prefix, the reference
    *  otherwise NoType
@@ -132,11 +132,11 @@ object NamerOps:
       newSymbol(
         modCls, nme.unapply,
         // The modifiers on unapply are essentially the same as on the constructor
-        UnApplyProxyFlags | (constr.flagsUNSAFE),
+        UnApplyProxyFlags | (constr.flagsUNSAFE & AccessFlags),
         MethodType(typeRef :: Nil, typeRef),
         cls.privateWithin,
         // TODO: Does this work? Or are we going to run into issues because the type it not the same?
-        defn.Predef_identity.coord
+        defn.JavaRecordReflectMirrorModule_identity.coord
       )
     val decl = cls.info.decls.find(_.isConstructor)
     scope.enter(proxy(decl))

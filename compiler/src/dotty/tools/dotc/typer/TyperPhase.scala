@@ -44,7 +44,10 @@ class TyperPhase(addRootImports: Boolean = true) extends Phase {
     val unit = ctx.compilationUnit
     try
       if !unit.suspended then
+        // println(unit.untpdTree.show)
         unit.tpdTree = ctx.typer.typedExpr(unit.untpdTree)
+        // println(unit.tpdTree.show)
+
         typr.println("typed: " + unit.source)
         record("retained untyped trees", unit.untpdTree.treeSize)
         record("retained typed trees after typer", unit.tpdTree.treeSize)

@@ -32,6 +32,7 @@ public class ChildJVMMain {
         catch (Throwable e) {
             // Include the failure stack trace to the test output
             System.out.println(MessageStart);
+	    System.out.println(dir);
             e.printStackTrace();
             throw e;
         }
